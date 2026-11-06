@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.spec
+.DS_Store
+
+.remote-libs/
+.relay-private/
+.relay-venv/
+*.before-tunnel

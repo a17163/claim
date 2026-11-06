@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">自动领取</string>
+    <string name="service_description">按你配置的规则读取目标钱包界面的按钮、网络费及成功提示，执行领取、确认和密码输入。仅在你点击开始后运行；可随时停止。密码仅本机加密保存，不联网。不会绕过钱包保护。</string>
+</resources>
