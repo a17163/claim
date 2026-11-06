@@ -40,7 +40,7 @@ jobs:
             -scheme WebDriverAgentRunner -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/wda-build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build-for-testing
-          runner_app="$RUNNER_TEMP/Payload/WebDriverAgentRunner-Runner.app"
+          runner_app="$RUNNER_TEMP/Payload/WDA-Remote.app"
           mkdir -p "$RUNNER_TEMP/Payload"
           ditto "$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app" \
             "$runner_app"
@@ -52,8 +52,10 @@ jobs:
           pair_config="$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBRemoteTunnel.plist"
           /usr/libexec/PlistBuddy -c 'Add :Enabled bool true' \
             -c 'Add :EnrollmentOrigin string https://wda.trxbi.com' "$pair_config"
-          # Match the app name and Settings entry created by sign_runner.py.
-          /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string WDA Remote' "$runner_app/Info.plist"
+          # Keep the fallback name consistent when a signing tool repackages the app.
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string WDA Remote' \
+            -c 'Set :CFBundleName WDA Remote' \
+            -c "Set :CFBundleVersion 1.${{ github.run_number }}" "$runner_app/Info.plist"
           python3 - "$runner_app" <<'PY'
           import plistlib
           import sys
