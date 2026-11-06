@@ -100,6 +100,16 @@ static NSData *FBRemotePreviewJPEG(NSData *data)
     NSURLComponents *parts = [NSURLComponents componentsWithString:origin];
     if (![parts.scheme isEqualToString:@"https"] || !parts.host.length || parts.user || parts.password ||
         parts.path.length || parts.query || parts.fragment) return;
+    // Give iOS a chance to request wireless data access before the user enters a pairing code.
+    NSURL *probeURL = [NSURL URLWithString:[origin stringByAppendingString:@"/claim/api/options"]];
+    if (!probeURL) return;
+    NSURLRequest *probe = [NSURLRequest requestWithURL:probeURL
+                                         cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:12];
+    [[self.session dataTaskWithRequest:probe completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+      if ([error.domain isEqualToString:NSURLErrorDomain]) {
+        NSLog(@"[RemoteTunnel] Startup network check failed (URL error %ld)", (long)error.code);
+      }
+    }] resume];
     __weak typeof(self) weakSelf = self;
     self.pairObserver = [NSNotificationCenter.defaultCenter addObserverForName:FBPairRequestEvent object:nil queue:nil
         usingBlock:^(NSNotification *event) {
@@ -224,7 +234,9 @@ static NSData *FBRemotePreviewJPEG(NSData *data)
       if (self.stopped) return;
       self.pairRequest = nil;
       NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? [(NSHTTPURLResponse *)response statusCode] : 0;
-      NSString *state = @"network";
+      BOOL unavailable = [error.domain isEqualToString:NSURLErrorDomain] &&
+          (error.code == NSURLErrorNotConnectedToInternet || error.code == NSURLErrorDataNotAllowed);
+      NSString *state = unavailable ? @"offline" : @"network";
       if (!error && status == 200 && data.length && data.length < 4096) {
         id value = [NSJSONSerialization JSONObjectWithData:data options:(NSJSONReadingOptions)0 error:nil];
         if ([value isKindOfClass:NSDictionary.class]) {

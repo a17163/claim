@@ -90,6 +90,7 @@ static void FBPhonePairPage(RouteRequest *request, RouteResponse *response, BOOL
       @"rejected": @"配对码无效、已过期或已使用，请生成新码后重试。",
       @"key": @"无法保存手机绑定凭据，请保持解锁后重试。",
       @"busy": @"当前无法开始绑定，请先停止领取或稍后重试。",
+      @"offline": @"WDA 无法访问网络。若 iOS 弹出无线数据提示，请允许；否则请在设置中检查此 WDA 的无线数据权限，然后重试。",
       @"network": @"无法确认服务器响应，请检查网络或先到网页查看设备列表。",
       @"expired": @"暂未收到绑定结果，请先到网页查看设备列表。",
     }[state] ?: @"无法确认绑定结果，请先到网页查看设备列表。";
