@@ -49,6 +49,9 @@ jobs:
           ditto --norsrc "$ios_dev/usr/lib/lib_TestingInterop.dylib" "$runner_app/Frameworks/lib_TestingInterop.dylib"
           ditto --norsrc "$ios_dev/Library/Frameworks/_Testing_Foundation.framework" \
             "$runner_app/Frameworks/_Testing_Foundation.framework"
+          pair_config="$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBRemoteTunnel.plist"
+          /usr/libexec/PlistBuddy -c 'Add :Enabled bool true' \
+            -c 'Add :EnrollmentOrigin string https://wda.trxbi.com' "$pair_config"
           ditto -c -k --norsrc --keepParent "$RUNNER_TEMP/Payload" "$RUNNER_TEMP/WDA-Remote-unsigned.ipa"
       - uses: actions/upload-artifact@v4
         with:
