@@ -7,6 +7,14 @@ import shutil
 
 
 def prepare(root):
+    # iOS attributes the wireless-data permission to the running test bundle, so the
+    # Runner must carry the same identifier as the app build that had the toggle.
+    project = root / 'WebDriverAgent.xcodeproj' / 'project.pbxproj'
+    source = project.read_text()
+    upstream_id = 'PRODUCT_BUNDLE_IDENTIFIER = com.facebook.WebDriverAgentRunner;'
+    if upstream_id in source:
+        project.write_text(source.replace(
+            upstream_id, 'PRODUCT_BUNDLE_IDENTIFIER = com.walletclick.wda.s4rnp6ldd6;'))
     runner = root / 'WebDriverAgentRunner' / 'UITestingUITests.m'
     original = runner.read_text()
     if '#import "FBRemoteTunnel.m"' not in original:

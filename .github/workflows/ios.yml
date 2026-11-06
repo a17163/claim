@@ -83,6 +83,12 @@ jobs:
           else
             echo 'BUGLY_APP_ID is not configured; crash reporting stays disabled.' | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+          # iOS attributes the wireless-data permission to the record of the running
+          # test bundle, so name it like the app instead of WebDriverAgentRunner-Runner.
+          test_info="$runner_app/PlugIns/WebDriverAgentRunner.xctest/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string WDA Remote' \
+            -c 'Set :CFBundleName WDA Remote' \
+            -c "Set :CFBundleVersion 1.${{ github.run_number }}" "$test_info"
           # Keep the fallback name consistent when a signing tool repackages the app.
           /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string WDA Remote' \
             -c 'Set :CFBundleName WDA Remote' \
