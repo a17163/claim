@@ -1,0 +1,20 @@
+{
+  "bundle_id": "com.global.wallet.ios",
+  "selectors": {
+    "home": "type == 'XCUIElementTypeStaticText' AND label == '固定價銷毀債券'",
+    "claim": "type == 'XCUIElementTypeButton' AND label == '全部領取'",
+    "fee_ready": "type == 'XCUIElementTypeStaticText' AND label == '网络费'",
+    "fee": "chain:**/XCUIElementTypeScrollView[$type == 'XCUIElementTypeStaticText' AND label == '网络费'$]/**/XCUIElementTypeStaticText[`label ENDSWITH ' DAI' OR (label CONTAINS ' DAI ($' AND label ENDSWITH ')')`]",
+    "cancel": "type == 'XCUIElementTypeImage' AND name == 'icon_close20'",
+    "confirm": "type == 'XCUIElementTypeButton' AND label == '确定'",
+    "password": "type == 'XCUIElementTypeSecureTextField' AND placeholderValue == '钱包密码'",
+    "submit": "type == 'XCUIElementTypeButton' AND label == '确定'",
+    "success": "",
+    "error": "type == 'XCUIElementTypeStaticText' AND label IN {'密码错误', '密碼錯誤', '钱包密码错误', '錢包密碼錯誤'}"
+  },
+  "fee_mode": "element",
+  "fee_attribute": "label",
+  "success_mode": "password_dismissed",
+  "interval": 1,
+  "timeout": 20
+}

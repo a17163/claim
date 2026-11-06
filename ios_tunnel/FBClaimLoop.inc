@@ -134,7 +134,7 @@ typedef id (^FBClaimDriver)(NSString *operation, NSString *key);
     [self noPreviousSuccess];
     if (![self has:@"home"] || ![self has:@"claim"]) {
       self.cleanSince = -1;
-      self.reason = @"请打开已验证的领取页";
+      self.reason = @"请打开钱包内配置对应的领取页";
       [self enter:@"准备领取页" now:now delay:1];
       return;
     }
@@ -213,9 +213,9 @@ typedef id (^FBClaimDriver)(NSString *operation, NSString *key);
         [self noPreviousSuccess];
         [self require:@"fee_ready"];
         if (![[self readFee] isEqual:fee]) FBClaimPause(@"确认前网络费已改变");
+        self.drive(@"mark", @"");
         self.confirmationPending = YES;
         self.ownFee = NO;
-        self.drive(@"mark", @"");
         self.drive(@"tap", @"confirm");
         [self enter:@"等待密码" now:now delay:0];
       }

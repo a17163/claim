@@ -146,6 +146,16 @@ int main(void)
     NSCAssert(job.successes == 1 && [job.state isEqual:@"完成"], @"Success was not counted");
     NSCAssert([events isEqual:(@[@"claim", @"mark", @"confirm", @"password", @"submit", @"clear"])], @"Action/marker order wrong");
     [events removeAllObjects];
+    job = fixture(@[@"1"], @"success", events);
+    FBClaimDriver original = job.drive;
+    job.drive = ^id(NSString *op, NSString *key) {
+      if ([op isEqual:@"mark"]) FBClaimPause(@"确认按钮不可用");
+      return original(op, key);
+    };
+    for (NSUInteger i = 0; i < 6; i++) [job tick:10 + .25 * i];
+    NSCAssert(job.running && !job.confirmationPending && [job.state isEqual:@"等待恢复"] &&
+              [events isEqual:(@[@"claim"])], @"Failed pre-confirmation validation sent a confirmation or marked it pending");
+    [events removeAllObjects];
     job = fixture(@[@"0.001"], @"unknown", events);run(job);
     NSCAssert(job.successes == 0 && [job.state isEqual:@"已暂停"], @"Unknown result counted as success");
     NSCAssert([events isEqual:(@[@"claim", @"mark", @"confirm", @"password", @"submit"])], @"Unknown result retried or cleared marker");
