@@ -33,18 +33,19 @@ jobs:
           echo 'aeb1a06dead51467b87d7103fa74827fd9f967a60b47255164fde0168fc4810a  wda.tgz' | shasum -a 256 -c
           tar -xzf wda.tgz
           python3 "$GITHUB_WORKSPACE/ios_tunnel/prepare_wda.py" --wda-source "$RUNNER_TEMP/package"
-      - name: Compile and package unsigned Runner
+      - name: Compile and package unsigned IPA
         run: |
           xcodebuild -version
           xcodebuild -quiet -project "$RUNNER_TEMP/package/WebDriverAgent.xcodeproj" \
             -scheme WebDriverAgentRunner -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/wda-build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build-for-testing
-          ditto -c -k --keepParent \
-            "$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app" \
-            "$RUNNER_TEMP/WDA-Runner-unsigned.zip"
+          mkdir -p "$RUNNER_TEMP/Payload"
+          ditto "$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app" \
+            "$RUNNER_TEMP/Payload/WebDriverAgentRunner-Runner.app"
+          ditto -c -k --norsrc --keepParent "$RUNNER_TEMP/Payload" "$RUNNER_TEMP/WDA-Remote-unsigned.ipa"
       - uses: actions/upload-artifact@v4
         with:
-          name: WDA-iOS-unsigned
-          path: ${{ runner.temp }}/WDA-Runner-unsigned.zip
+          name: WDA-iOS-unsigned-IPA
+          path: ${{ runner.temp }}/WDA-Remote-unsigned.ipa
           if-no-files-found: error
