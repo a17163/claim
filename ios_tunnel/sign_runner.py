@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--identity', required=True, help='已授权开发证书名称或 SHA1')
     parser.add_argument('--profile', required=True, type=Path)
     parser.add_argument('--bundle-id', required=True)
-    parser.add_argument('--config', type=Path, help='私密融合配置；缺省关闭隧道')
+    parser.add_argument('--config', type=Path, help='覆盖包内配置；不提供时保留包内配置')
     parser.add_argument('--runtime-template', type=Path,
                         help='同版本、已验收 WDA 的 .app，用于补齐当前 Xcode 的测试运行库')
     args = parser.parse_args()
@@ -52,7 +52,9 @@ def main():
     bundle = args.out / 'PlugIns' / 'WebDriverAgentRunner.xctest'
     if not bundle.is_dir():
         parser.error('缺少 WebDriverAgentRunner.xctest')
-    config = plistlib.loads(args.config.read_bytes()) if args.config else {'Enabled': False}
+    config_path = bundle / 'FBRemoteTunnel.plist'
+    config_source = args.config or config_path
+    config = plistlib.loads(config_source.read_bytes()) if args.config or config_path.exists() else {'Enabled': False}
     if config.get('EnrollmentOrigin'):
         settings = args.out / 'Settings.bundle'
         settings.mkdir(exist_ok=True)
@@ -65,7 +67,6 @@ def main():
                  'AutocorrectionType': 'No'},
             ],
         }))
-    config_path = bundle / 'FBRemoteTunnel.plist'
     config_path.write_bytes(plistlib.dumps(config))
     config_path.chmod(0o600)
     sign = ['codesign', '--force', '--sign', args.identity, '--timestamp=none']
