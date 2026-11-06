@@ -40,9 +40,15 @@ jobs:
             -scheme WebDriverAgentRunner -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/wda-build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build-for-testing
+          runner_app="$RUNNER_TEMP/Payload/WebDriverAgentRunner-Runner.app"
           mkdir -p "$RUNNER_TEMP/Payload"
           ditto "$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app" \
-            "$RUNNER_TEMP/Payload/WebDriverAgentRunner-Runner.app"
+            "$runner_app"
+          # Xcode's build-for-testing omits these two XCTest dependencies on iOS 16.
+          ios_dev="$(xcrun --sdk iphoneos --show-sdk-platform-path)/Developer"
+          ditto --norsrc "$ios_dev/usr/lib/lib_TestingInterop.dylib" "$runner_app/Frameworks/lib_TestingInterop.dylib"
+          ditto --norsrc "$ios_dev/Library/Frameworks/_Testing_Foundation.framework" \
+            "$runner_app/Frameworks/_Testing_Foundation.framework"
           ditto -c -k --norsrc --keepParent "$RUNNER_TEMP/Payload" "$RUNNER_TEMP/WDA-Remote-unsigned.ipa"
       - uses: actions/upload-artifact@v4
         with:
