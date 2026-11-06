@@ -1,0 +1,50 @@
+name: iOS WDA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios_tunnel/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check phone claim and tunnel logic
+        run: |
+          clang -fobjc-arc -framework Foundation ios_tunnel/test_claim_loop.m -o "$RUNNER_TEMP/test_claim_loop"
+          "$RUNNER_TEMP/test_claim_loop"
+          clang -fobjc-arc -framework Foundation -framework Security -framework CoreGraphics -framework ImageIO -framework Network ios_tunnel/test_tunnel.m -o "$RUNNER_TEMP/test_tunnel"
+          "$RUNNER_TEMP/test_tunnel"
+      - name: Prepare WDA source
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 --output wda.tgz https://registry.npmjs.org/appium-webdriveragent/-/appium-webdriveragent-16.17.9.tgz
+          echo 'aeb1a06dead51467b87d7103fa74827fd9f967a60b47255164fde0168fc4810a  wda.tgz' | shasum -a 256 -c
+          tar -xzf wda.tgz
+          python3 "$GITHUB_WORKSPACE/ios_tunnel/prepare_wda.py" --wda-source "$RUNNER_TEMP/package"
+      - name: Compile and package unsigned Runner
+        run: |
+          xcodebuild -version
+          xcodebuild -quiet -project "$RUNNER_TEMP/package/WebDriverAgent.xcodeproj" \
+            -scheme WebDriverAgentRunner -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/wda-build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build-for-testing
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app" \
+            "$RUNNER_TEMP/WDA-Runner-unsigned.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WDA-iOS-unsigned
+          path: ${{ runner.temp }}/WDA-Runner-unsigned.zip
+          if-no-files-found: error
