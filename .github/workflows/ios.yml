@@ -52,6 +52,25 @@ jobs:
           pair_config="$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBRemoteTunnel.plist"
           /usr/libexec/PlistBuddy -c 'Add :Enabled bool true' \
             -c 'Add :EnrollmentOrigin string https://wda.trxbi.com' "$pair_config"
+          # Match the app name and Settings entry created by sign_runner.py.
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string WDA Remote' "$runner_app/Info.plist"
+          python3 - "$runner_app" <<'PY'
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          settings = Path(sys.argv[1]) / 'Settings.bundle'
+          settings.mkdir()
+          (settings / 'Root.plist').write_bytes(plistlib.dumps({
+              'PreferenceSpecifiers': [
+                  {'Type': 'PSGroupSpecifier', 'Title': 'WDA Remote',
+                   'FooterText': '在网页控制台生成配对码，填入后启动 WDA。'},
+                  {'Type': 'PSTextFieldSpecifier', 'Title': '配对码', 'Key': 'WalletClickPairCode',
+                   'DefaultValue': '', 'IsSecure': True, 'AutocapitalizationType': 'None',
+                   'AutocorrectionType': 'No'},
+              ],
+          }))
+          PY
           ditto -c -k --norsrc --keepParent "$RUNNER_TEMP/Payload" "$RUNNER_TEMP/WDA-Remote-unsigned.ipa"
       - uses: actions/upload-artifact@v4
         with:
