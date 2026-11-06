@@ -4,4 +4,6 @@
 
 修改本目录或 iOS 工作流并推送后，GitHub Actions 的 **iOS WDA** 会运行本地逻辑测试并编译 iPhone 真机用的 Runner。也可在 **Actions → iOS WDA → Run workflow** 手动运行。
 
-编译成功后，从运行详情的 **Artifacts → WDA-iOS-unsigned-IPA** 下载 ZIP，解压可得到 `WDA-Remote-unsigned.ipa`。IPA 内含 `Payload/WebDriverAgentRunner-Runner.app`，未签名，也不含中继凭据或配对配置。安装前需用自己的 Apple 开发签名和设备描述文件签名。需要注入私密配置时，请在签名前使用 `prepare_wda.py --test-bundle … --config …` 在本机处理。
+编译成功后，从运行详情的 **Artifacts → WDA-iOS-unsigned-IPA** 下载 ZIP，解压可得到 `WDA-Remote-unsigned.ipa`。IPA 内含 `Payload/WebDriverAgentRunner-Runner.app`，并补齐 iOS 16 所需的两项 XCTest 运行库。
+
+IPA 预置 `https://wda.trxbi.com` 的配对配置，不包含签名、设备描述文件、配对码或设备凭据。用自己的 Apple 开发证书和包含目标 iPhone 的描述文件自签时，需一并签好内嵌的 `Frameworks` 和 `PlugIns/WebDriverAgentRunner.xctest`。Mac 上可用本目录的 `sign_runner.py`，默认保留包内配置；要换服务器可用 `--config` 覆盖。安装后通过 Xcode 或 go-ios 启动 XCTest，再在 iPhone Safari 打开 `http://127.0.0.1:8100/wda/claim/pairing` 或扫描网页生成的配对二维码。
