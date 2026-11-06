@@ -1,6 +1,7 @@
 #if TARGET_OS_IOS
 #import "FBClaimLoop.inc"
 #import "FBClaimHistory.inc"
+#import "FBBugly.inc"
 #import "FBPairKey.inc"
 #import "XCUIApplication+FBHelpers.h"
 #import "XCUIElement+FBClassChain.h"
@@ -83,6 +84,7 @@ static NSDictionary *FBClaimLastRecord;
 
 static void FBClaimCheckpoint(FBClaimLoop *job)
 {
+  FBBuglySetClaimState(job.running ? job.state : job.endStep, job.reason, job.action);
   FBClaimLastRecord = FBClaimRunRecord(job, YES);
   FBClaimHistorySaved = FBClaimHistoryUpdate(FBClaimRunJournal, FBClaimLastRecord, @"record");
   if (FBClaimHistorySaved) FBClaimRevision++;
@@ -237,6 +239,19 @@ static NSDictionary *FBClaimProfile(id input, BOOL complete)
            @"fee_attribute": attribute, @"success_mode": successMode, @"ocr_region": region, @"interval": interval, @"limit": limit, @"timeout": timeout};
 }
 
+#import "FBClaimBundledProfile.inc"
+
+static NSDictionary *FBClaimBundledProfile(void)
+{
+  static NSDictionary *profile;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    NSData *data = [FBClaimBundledProfileJSON dataUsingEncoding:NSUTF8StringEncoding];
+    profile = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  });
+  return profile;
+}
+
 static XCUIApplication *FBClaimFront(NSDictionary *profile)
 {
   if (FBClaimJob.running && FBClaimJob.stopRequested) FBClaimPause(@"收到停止请求");
@@ -317,12 +332,14 @@ static NSDictionary *FBClaimStatus(void)
 {
   if (!FBClaimJob) FBPhoneClaimRecoverHistory();
   NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-  NSDictionary *profile = [defaults dictionaryForKey:FBClaimProfileKey];
+  NSDictionary *savedProfile = [defaults dictionaryForKey:FBClaimProfileKey];
+  NSDictionary *profile = savedProfile ?: FBClaimBundledProfile();
   NSMutableDictionary *status = [@{@"ok": @YES, @"running": @(FBClaimJob.running), @"requires_review": @(FBClaimPending()),
            @"state": FBClaimJob.state ?: @"未启动", @"reason": FBClaimJob.reason ?: @"",
            @"attempts": @(FBClaimJob.attempts), @"successes": @(FBClaimJob.successes), @"fee": FBClaimJob.fee ?: @"",
            @"device_uuid": FBClaimDeviceID(), @"bundle_id": profile[@"bundle_id"] ?: @"",
            @"success_mode": profile[@"success_mode"] ?: @"element",
+           @"runtime_validation": !savedProfile && profile != nil ? @YES : @NO,
            @"start_delay_supported": @YES,
            @"verified": [defaults arrayForKey:FBClaimStagesKey] ?: @[],
            @"start_nonce": FBClaimJob.running ? @"" : (FBClaimFreshNonce() ?: @"")} mutableCopy];
@@ -366,7 +383,12 @@ static NSDictionary *FBClaimCommand(NSString *op, NSDictionary *args)
       FBClaimJob = nil;
       return FBClaimStatus();
     }
-    if (!profile || ![profile[@"device_uuid"] isEqual:FBClaimDeviceID()]) FBClaimPause(@"请先通过 USB 配置本设备的钱包规则");
+    BOOL useBundledProfile = profile == nil;
+    if (useBundledProfile) {
+      profile = FBClaimProfile(FBClaimBundledProfile(), YES);
+    } else if (![profile[@"device_uuid"] isEqual:FBClaimDeviceID()]) {
+      FBClaimPause(@"已保存的规则不属于当前设备");
+    }
     if ([op isEqual:@"start-key"]) {
       NSString *publicKey = FBPairPublicKey();
       if (!publicKey) FBClaimPause(@"无法取得手机启动公钥，请保持解锁");
@@ -414,11 +436,13 @@ static NSDictionary *FBClaimCommand(NSString *op, NSDictionary *args)
     }
     if (![op isEqual:@"start"]) FBClaimPause(@"未知自动化命令");
     if (FBClaimPending()) FBClaimPause(@"上一次交易结果待核对，禁止重新开始");
-    FBClaimProfile(profile, YES);
+    if (!useBundledProfile) FBClaimProfile(profile, YES);
     BOOL countDismissal = [profile[@"success_mode"] isEqual:@"password_dismissed"];
-    for (NSString *stage in FBClaimStages()) {
-      if (countDismissal && [stage isEqual:@"success"]) continue;
-      if (![verified containsObject:stage]) FBClaimPause(@"请先只读验证所需页面阶段");
+    if (!useBundledProfile) {
+      for (NSString *stage in FBClaimStages()) {
+        if (countDismissal && [stage isEqual:@"success"]) continue;
+        if (![verified containsObject:stage]) FBClaimPause(@"请先只读验证所需页面阶段");
+      }
     }
     NSDictionary *input = FBClaimStartInput(args[@"sealed"]);
     NSTimeInterval delay = [input[@"start_delay"] doubleValue];
@@ -435,7 +459,14 @@ static NSDictionary *FBClaimCommand(NSString *op, NSDictionary *args)
     __weak FBClaimLoop *weakJob = job;
     job.drive = ^id(NSString *operation, NSString *key) {
       weakJob.action = key.length ? [NSString stringWithFormat:@"%@:%@", operation, key] : operation;
-      if ([operation isEqual:@"mark"]) { FBClaimFront(profile); FBClaimMark(); return nil; }
+      if ([operation isEqual:@"mark"]) {
+        if (FBClaimElement(profile, @"password", NO) ||
+            !FBClaimElement(profile, @"confirm", YES).isWDEnabled) {
+          FBClaimPause(@"网络费弹窗的确认按钮不可操作");
+        }
+        FBClaimMark();
+        return nil;
+      }
       if ([operation isEqual:@"clear"]) { FBClaimClear(); return nil; }
       if ([operation isEqual:@"fee"]) return FBClaimFee(profile);
       if ([operation isEqual:@"error_reason"]) {
@@ -470,6 +501,8 @@ static NSDictionary *FBClaimCommand(NSString *op, NSDictionary *args)
       FBClaimFront(profile);
       if (dismiss || [operation isEqual:@"tap"]) [item tap];
       else if ([operation isEqual:@"type"]) {
+        FBClaimElement(profile, @"submit", YES);
+        FBClaimFront(profile);
         if (item.elementType != XCUIElementTypeSecureTextField || ![item fb_typeText:password shouldClear:YES error:nil]) {
           FBClaimPause(@"无法在系统安全密码框输入，请人工检查");
         }

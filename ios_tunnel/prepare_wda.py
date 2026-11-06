@@ -1,5 +1,6 @@
 """Inject the module into an existing WDA source tree without editing pbxproj."""
 import argparse
+import json
 import plistlib
 from pathlib import Path
 import shutil
@@ -13,15 +14,21 @@ def prepare(root):
         if original.count(hook) != 1:
             raise ValueError('WDA 入口已改变，拒绝自动修改')
         updated = original.replace('#import <XCTest/XCTest.h>',
-                                  '#import <XCTest/XCTest.h>\n#import "FBRemoteTunnel.m"')
+                                  '#import <XCTest/XCTest.h>\n#import "FBRemoteTunnel.m"\n#import "FBBugly.inc"')
         updated = updated.replace(hook, '  FBRemoteTunnel *tunnel = [FBRemoteTunnel new];\n'
                                   '  [tunnel start];\n'
                                   '  @try { [webServer startServing]; }\n'
                                   '  @finally { [tunnel stop]; }')
         runner.with_suffix('.m.before-tunnel').write_text(original)
         runner.write_text(updated)
+    source = runner.read_text()
+    if 'FBBuglyStart();' not in source:
+        marker = '  FBRemoteTunnel *tunnel = [FBRemoteTunnel new];'
+        if source.count(marker) != 1 or '#import "FBBugly.inc"' not in source:
+            raise ValueError('WDA 崩溃上报入口已改变，拒绝自动修改')
+        runner.write_text(source.replace(marker, '  FBBuglyStart();\n' + marker))
     shutil.copy2(Path(__file__).with_name('FBRemoteTunnel.m'), runner.parent)
-    for filename in ('FBPairKey.inc', 'FBClaimHistory.inc', 'FBPairEvents.inc'):
+    for filename in ('FBPairKey.inc', 'FBClaimHistory.inc', 'FBPairEvents.inc', 'FBBugly.inc'):
         shutil.copy2(Path(__file__).with_name(filename), runner.parent)
     touch = root / 'WebDriverAgentLib' / 'Commands' / 'FBTouchActionCommands.m'
     source = touch.read_text()
@@ -54,8 +61,12 @@ def prepare(root):
             '{ return FBResponseWithObject(FBClaimCommand(request.parameters[@"op"] ?: @"", request.arguments)); }\n'
             '#endif\n\n@end')
         touch.write_text(source)
-    for filename in ('FBClaimLoop.inc', 'FBPhoneClaim.inc', 'FBPairKey.inc', 'FBClaimHistory.inc'):
+    for filename in ('FBClaimLoop.inc', 'FBPhoneClaim.inc', 'FBPairKey.inc', 'FBClaimHistory.inc', 'FBBugly.inc'):
         shutil.copy2(Path(__file__).with_name(filename), touch.parent)
+    profile = json.loads(Path(__file__).with_name('tokenpocket-claim.json').read_text(encoding='utf-8'))
+    literal = json.dumps(json.dumps(profile, ensure_ascii=True, separators=(',', ':')))
+    (touch.parent / 'FBClaimBundledProfile.inc').write_text(
+        f'static NSString *const FBClaimBundledProfileJSON = @{literal};\n', encoding='utf-8')
 
     web_server = root / 'WebDriverAgentLib' / 'Routing' / 'FBWebServer.m'
     source = web_server.read_text()

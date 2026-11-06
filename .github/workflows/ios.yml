@@ -33,6 +33,15 @@ jobs:
           echo 'aeb1a06dead51467b87d7103fa74827fd9f967a60b47255164fde0168fc4810a  wda.tgz' | shasum -a 256 -c
           tar -xzf wda.tgz
           python3 "$GITHUB_WORKSPACE/ios_tunnel/prepare_wda.py" --wda-source "$RUNNER_TEMP/package"
+      - name: Fetch Bugly crash SDK
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --retry 3 --output bugly.zip \
+            https://buglycocoapodscrashsdk-75649.gzc.vod.tencent-cloud.com/Bugly-2.6.1.zip
+          echo '445fbc683fc8c7d7a978eed80a8e35b7cbf74586f8fd879e1838b9387e1f9e2e  bugly.zip' | shasum -a 256 -c
+          mkdir -p bugly
+          unzip -qo bugly.zip -d bugly -x '__MACOSX/*'
+          test -f bugly/Bugly.framework/Bugly
       - name: Build unsigned WDA runner
         shell: bash
         run: |
@@ -44,6 +53,10 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/wda-build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            FRAMEWORK_SEARCH_PATHS="\$(inherited) $RUNNER_TEMP/bugly" \
+            OTHER_LDFLAGS="\$(inherited) -framework Bugly -lz -lc++" \
+            OTHER_CFLAGS="\$(inherited) -Wno-quoted-include-in-framework-header -Wno-documentation -Wno-objc-property-assign-on-object-type" \
             build-for-testing 2>&1 | tee "$RUNNER_TEMP/wda-build.log"
       - name: Package IPA
         shell: bash
@@ -61,6 +74,15 @@ jobs:
           pair_config="$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBRemoteTunnel.plist"
           /usr/libexec/PlistBuddy -c 'Add :Enabled bool true' \
             -c 'Add :EnrollmentOrigin string https://wda.trxbi.com' "$pair_config"
+          # Bugly stays off unless the repository secret supplies a real App ID.
+          if [ -n '${{ secrets.BUGLY_APP_ID }}' ]; then
+            /usr/libexec/PlistBuddy \
+              -c 'Add :AppId string ${{ secrets.BUGLY_APP_ID }}' \
+              -c 'Add :Channel string wda-ios' \
+              "$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBBugly.plist"
+          else
+            echo 'BUGLY_APP_ID is not configured; crash reporting stays disabled.' | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
           # Keep the fallback name consistent when a signing tool repackages the app.
           /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string WDA Remote' \
             -c 'Set :CFBundleName WDA Remote' \
@@ -89,6 +111,23 @@ jobs:
           name: WDA-iOS-unsigned-IPA
           path: ${{ runner.temp }}/WDA-Remote-unsigned.ipa
           if-no-files-found: error
+      - name: Collect dSYM
+        shell: bash
+        run: |
+          set -euo pipefail
+          products="$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos"
+          mkdir -p "$RUNNER_TEMP/dsym"
+          while IFS= read -r -d '' item; do
+            ditto -c -k --keepParent "$item" "$RUNNER_TEMP/dsym/$(basename "$item").zip"
+          done < <(find "$products" -name '*.dSYM' -maxdepth 6 -print0)
+          ls -l "$RUNNER_TEMP/dsym"
+      - name: Upload dSYM for Bugly symbolication
+        uses: actions/upload-artifact@v4
+        with:
+          name: WDA-iOS-dSYM
+          path: ${{ runner.temp }}/dsym/*.zip
+          if-no-files-found: warn
+          retention-days: 30
       - name: Upload failed build log
         if: failure()
         uses: actions/upload-artifact@v4
