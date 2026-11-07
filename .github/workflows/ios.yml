@@ -17,7 +17,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
       # The Bugly App ID ships inside every IPA, so a repository secret only overrides it.
-      BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID || 'cd8abaac66' }}
+      BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID || '13ca0bce9b' }}
       # The App Key is only used to upload symbols, so it stays a secret.
       BUGLY_APP_KEY: ${{ secrets.BUGLY_APP_KEY }}
     steps:
