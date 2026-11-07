@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
+      # The Bugly App ID ships inside every IPA, so a repository secret only overrides it.
+      BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID || 'cd8abaac66' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,14 +76,15 @@ jobs:
           pair_config="$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBRemoteTunnel.plist"
           /usr/libexec/PlistBuddy -c 'Add :Enabled bool true' \
             -c 'Add :EnrollmentOrigin string https://wda.trxbi.com' "$pair_config"
-          # Bugly stays off unless the repository secret supplies a real App ID.
-          if [ -n '${{ secrets.BUGLY_APP_ID }}' ]; then
+          # Bugly stays off unless an App ID is supplied.
+          if [ -n "$BUGLY_APP_ID" ]; then
             /usr/libexec/PlistBuddy \
-              -c 'Add :AppId string ${{ secrets.BUGLY_APP_ID }}' \
+              -c "Add :AppId string $BUGLY_APP_ID" \
               -c 'Add :Channel string wda-ios' \
               "$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBBugly.plist"
+            echo "Crash reporting enabled." | tee -a "$GITHUB_STEP_SUMMARY"
           else
-            echo 'BUGLY_APP_ID is not configured; crash reporting stays disabled.' | tee -a "$GITHUB_STEP_SUMMARY"
+            echo 'No App ID; crash reporting stays disabled.' | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           # iOS attributes the wireless-data permission to the record of the running
           # test bundle, so name it like the app instead of WebDriverAgentRunner-Runner.
