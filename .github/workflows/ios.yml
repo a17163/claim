@@ -52,6 +52,7 @@ jobs:
           set -o pipefail
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
+          # Inheriting the test target's -all_load would duplicate the static Bugly SDK.
           xcodebuild -quiet -project "$RUNNER_TEMP/package/WebDriverAgent.xcodeproj" \
             -scheme WebDriverAgentRunner -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/wda-build" \
@@ -59,9 +60,22 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" \
             DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
             FRAMEWORK_SEARCH_PATHS="\$(inherited) $RUNNER_TEMP/bugly" \
-            OTHER_LDFLAGS="\$(inherited) -framework Bugly -lz -lc++" \
+            OTHER_LDFLAGS="-framework Bugly -lz -lc++" \
             OTHER_CFLAGS="\$(inherited) -Wno-quoted-include-in-framework-header -Wno-documentation -Wno-objc-property-assign-on-object-type" \
             build-for-testing 2>&1 | tee "$RUNNER_TEMP/wda-build.log"
+      - name: Verify single Bugly SDK implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          products="$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos"
+          nm -gU "$products/WebDriverAgentRunner-Runner.app/PlugIns/WebDriverAgentRunner.xctest/WebDriverAgentRunner" > "$RUNNER_TEMP/runner-symbols.txt"
+          nm -gU "$products/WebDriverAgentLib.framework/WebDriverAgentLib" > "$RUNNER_TEMP/framework-symbols.txt"
+          if grep -Eq ' (_OBJC_CLASS_\$_Bugly|_FBBuglyStart)$' "$RUNNER_TEMP/runner-symbols.txt"; then
+            echo 'Bugly must be implemented only in WebDriverAgentLib.' >&2
+            exit 1
+          fi
+          grep -q ' _OBJC_CLASS_\$_Bugly$' "$RUNNER_TEMP/framework-symbols.txt"
+          grep -q ' _FBBuglyStart$' "$RUNNER_TEMP/framework-symbols.txt"
       - name: Package IPA
         shell: bash
         run: |
@@ -83,6 +97,7 @@ jobs:
             /usr/libexec/PlistBuddy \
               -c "Add :AppId string $BUGLY_APP_ID" \
               -c 'Add :Channel string wda-ios' \
+              -c 'Add :Debug bool true' \
               "$runner_app/PlugIns/WebDriverAgentRunner.xctest/FBBugly.plist"
             echo "Crash reporting enabled." | tee -a "$GITHUB_STEP_SUMMARY"
           else

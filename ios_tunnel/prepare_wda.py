@@ -22,19 +22,25 @@ def prepare(root):
         if original.count(hook) != 1:
             raise ValueError('WDA 入口已改变，拒绝自动修改')
         updated = original.replace('#import <XCTest/XCTest.h>',
-                                  '#import <XCTest/XCTest.h>\n#import "FBRemoteTunnel.m"\n#import "FBBugly.inc"')
+                                  '#import <XCTest/XCTest.h>\n#import "FBRemoteTunnel.m"\nextern void FBBuglyStart(void);')
         updated = updated.replace(hook, '  FBRemoteTunnel *tunnel = [FBRemoteTunnel new];\n'
                                   '  [tunnel start];\n'
                                   '  @try { [webServer startServing]; }\n'
                                   '  @finally { [tunnel stop]; }')
         runner.with_suffix('.m.before-tunnel').write_text(original)
         runner.write_text(updated)
-    source = runner.read_text()
+    # Bugly and its claim context must live only in WebDriverAgentLib. Linking
+    # the static SDK into both binaries creates duplicate Objective-C classes.
+    source = runner.read_text().replace('#import "FBBugly.inc"', 'extern void FBBuglyStart(void);')
+    if 'extern void FBBuglyStart(void);' not in source:
+        source = source.replace('#import "FBRemoteTunnel.m"',
+                                '#import "FBRemoteTunnel.m"\nextern void FBBuglyStart(void);')
     if 'FBBuglyStart();' not in source:
         marker = '  FBRemoteTunnel *tunnel = [FBRemoteTunnel new];'
-        if source.count(marker) != 1 or '#import "FBBugly.inc"' not in source:
+        if source.count(marker) != 1 or 'extern void FBBuglyStart(void);' not in source:
             raise ValueError('WDA 崩溃上报入口已改变，拒绝自动修改')
-        runner.write_text(source.replace(marker, '  FBBuglyStart();\n' + marker))
+        source = source.replace(marker, '  FBBuglyStart();\n' + marker)
+    runner.write_text(source)
     shutil.copy2(Path(__file__).with_name('FBRemoteTunnel.m'), runner.parent)
     for filename in ('FBPairKey.inc', 'FBClaimHistory.inc', 'FBPairEvents.inc', 'FBBugly.inc'):
         shutil.copy2(Path(__file__).with_name(filename), runner.parent)
