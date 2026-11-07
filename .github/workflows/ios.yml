@@ -18,6 +18,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
       # The Bugly App ID ships inside every IPA, so a repository secret only overrides it.
       BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID || 'cd8abaac66' }}
+      # The App Key is only used to upload symbols, so it stays a secret.
+      BUGLY_APP_KEY: ${{ secrets.BUGLY_APP_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,11 +127,33 @@ jobs:
         run: |
           set -euo pipefail
           products="$RUNNER_TEMP/wda-build/Build/Products/Debug-iphoneos"
-          mkdir -p "$RUNNER_TEMP/dsym"
+          mkdir -p "$RUNNER_TEMP/dsym" "$RUNNER_TEMP/dsym-raw"
           while IFS= read -r -d '' item; do
-            ditto -c -k --keepParent "$item" "$RUNNER_TEMP/dsym/$(basename "$item").zip"
+            name="$(basename "$item")"
+            ditto -c -k --keepParent "$item" "$RUNNER_TEMP/dsym/$name.zip"
+            cp -R "$item" "$RUNNER_TEMP/dsym-raw/$name"
           done < <(find "$products" -name '*.dSYM' -maxdepth 6 -print0)
-          ls -l "$RUNNER_TEMP/dsym"
+          dwarfdump --uuid "$RUNNER_TEMP"/dsym-raw/*.dSYM | tee "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Upload dSYM to Bugly
+        if: env.BUGLY_APP_KEY != ''
+        shell: bash
+        run: |
+          set -o pipefail
+          java -jar ios_tunnel/tools/buglyqq-upload-symbol.jar \
+            -appid "$BUGLY_APP_ID" \
+            -appkey "$BUGLY_APP_KEY" \
+            -bundleid com.walletclick.wda.s4rnp6ldd6.xctrunner \
+            -version "1.${{ github.run_number }}" \
+            -platform IOS \
+            -inputSymbol "$RUNNER_TEMP/dsym-raw" 2>&1 | tee "$RUNNER_TEMP/bugly-upload.log"
+          grep -q '200' "$RUNNER_TEMP/bugly-upload.log" || {
+            echo 'Bugly upload did not report 200.' >&2
+            exit 1
+          }
       - name: Upload dSYM for Bugly symbolication
         uses: actions/upload-artifact@v4
         with:
